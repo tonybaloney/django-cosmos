@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def next_id():
-    return str(uuid4())
+    return uuid4().int >> 64
 
 
 class CosmosWarning(Exception):
@@ -56,6 +56,10 @@ class CosmosNotSupportedError(CosmosDatabaseError):
     pass
 
 
+def as_result_set(result):
+    return list(result.values())
+
+
 class CosmosDatabaseCursor:
     def __init__(self, name, db, partition_key):
         self._name = name
@@ -79,7 +83,7 @@ class CosmosDatabaseCursor:
         logger.debug(operation, *parameters)
         if self._container is None:
             raise CosmosInterfaceError("Cursor has no container")
-
+        assert len(parameters) == 1
         # Cosmos doesn't support unnamed parameters. It requires a special list
         # of KVP dictionaries. Convert them here.
         params = []
@@ -90,9 +94,11 @@ class CosmosDatabaseCursor:
             cleaned_sql += operation[cursor : arg.start()] + "@arg{0}".format(arg_num)
             cursor = arg.end()
             params.append(
-                {"name": "@arg{0}".format(arg_num), "value": parameters[arg_num]}
+                {"name": "@arg{0}".format(arg_num), "value": parameters[0][arg_num]}
             )
             arg_num += 1
+        cleaned_sql += operation[cursor:]
+        print("SQL Query : ", cleaned_sql)
         self._result = self._container.query_items(
             query=cleaned_sql, parameters=params, enable_cross_partition_query=True
         )
@@ -103,10 +109,10 @@ class CosmosDatabaseCursor:
 
     def fetchone(self):
         res = next(self._result)
-        return res
+        return as_result_set(res)
 
     def fetchmany(self, count):
-        return list(self._result)
+        return [as_result_set(r) for r in self._result]
 
     def insert_batch(self, table, pk_col, rows):
         """Insert a list of dicts to table."""
@@ -117,7 +123,7 @@ class CosmosDatabaseCursor:
                     "Cannot use {0} as a column name".format(self._partition_key)
                 )
             self._last_id = next_id()
-            row[self._partition_key] = self._last_id
+            row[self._partition_key] = str(self._last_id)
             if pk_col not in row:
                 row[pk_col] = self._last_id
             self._db.create_container_if_not_exists(
