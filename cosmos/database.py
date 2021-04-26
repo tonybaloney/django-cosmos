@@ -6,6 +6,7 @@ import azure.cosmos.exceptions as exceptions
 from azure.cosmos.partition_key import PartitionKey
 from azure.cosmos.documents import ProxyConfiguration
 from uuid import uuid4
+import re
 import logging
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,10 @@ class CosmosDatabaseCursor:
         self._name = name
         self._db = db
         self._partition_key = partition_key
+        if name:
+            self.set_container(name)
+        else:
+            self._container = None
 
     def close(self):
         pass  # no equivalent method
@@ -67,13 +72,30 @@ class CosmosDatabaseCursor:
     def get_table_list(self):
         return self._db.list_containers()
 
+    def set_container(self, name):
+        self._container = self._db.get_container_client(name)
+
     def execute(self, operation, *parameters):
         logger.debug(operation, *parameters)
-        print(operation)
+        if self._container is None:
+            raise CosmosInterfaceError("Cursor has no container")
+
+        # Cosmos doesn't support unnamed parameters. It requires a special list
+        # of KVP dictionaries. Convert them here.
+        params = []
+        cleaned_sql = ""
+        arg_num = 0
+        cursor = 0
+        for arg in re.finditer("%s", operation):
+            cleaned_sql += operation[cursor : arg.start()] + "@arg{0}".format(arg_num)
+            cursor = arg.end()
+            params.append(
+                {"name": "@arg{0}".format(arg_num), "value": parameters[arg_num]}
+            )
+            arg_num += 1
         self._result = self._container.query_items(
-            query=operation,
+            query=cleaned_sql, parameters=params, enable_cross_partition_query=True
         )
-        self._cursor_pos = 0
 
     @property
     def lastrowid(self):
@@ -81,11 +103,10 @@ class CosmosDatabaseCursor:
 
     def fetchone(self):
         res = next(self._result)
-        self._cursor_pos += 1
         return res
 
     def fetchmany(self, count):
-        return self._result
+        return list(self._result)
 
     def insert_batch(self, table, pk_col, rows):
         """Insert a list of dicts to table."""

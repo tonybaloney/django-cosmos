@@ -61,9 +61,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         self._autocommit = autocommit
 
-    def chunked_cursor(self):
-        return self.cursor()
-
     def get_connection_params(self):
         """Return a dict of parameters suitable for get_new_connection."""
         return self.settings_dict.copy()
