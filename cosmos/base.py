@@ -1,3 +1,4 @@
+from cosmos.schema import CosmosDatabaseSchemaEditor
 from cosmos.database import CosmosDatabase
 from azure.cosmos import DatabaseAccount
 from cosmos.validation import CosmosDatabaseValidation
@@ -20,6 +21,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
     introspection_class = CosmosDatabaseIntrospection
     ops_class = CosmosDatabaseOperations
     validation_class = CosmosDatabaseValidation
+    SchemaEditorClass = CosmosDatabaseSchemaEditor
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -34,6 +36,14 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         pass
 
+    def set_autocommit(
+        self, autocommit, force_begin_transaction_with_broken_autocommit=False
+    ):
+        """
+        The base method actually causes a recursive loop, just set an internal flag
+        """
+        self._autocommit = autocommit
+
     def chunked_cursor(self):
         return self.cursor()
 
@@ -45,9 +55,11 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """Open a connection to the database."""
         url = conn_params.get("URL", None)
         key = conn_params.get("KEY", None)
+        name = conn_params.get("NAME", "django")
+        container = conn_params.get("CONTAINER", "default")
         if not url or not key:
             raise KeyError("Missing URL or KEY in database configuration")
-        self._connection = self.Database().connect(url, key)
+        return self.Database().connect(url, key, name, container)
 
     def init_connection_state(self):
         """Initialize the database connection settings."""
@@ -55,13 +67,14 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def create_cursor(self, name=None):
         """Create a cursor. Assume that a connection is established."""
-        return self._connection.cursor(name)
+        self.ensure_connection()
+        return self.connection.cursor(name)
 
     def _set_autocommit(self, autocommit):
         """
         Backend-specific implementation to enable or disable autocommit.
         """
-        pass
+        self.autocommit = autocommit
 
     def is_usable(self):
         return True

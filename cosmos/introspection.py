@@ -3,5 +3,4 @@ from django.db.backends.base.introspection import BaseDatabaseIntrospection, Tab
 
 class CosmosDatabaseIntrospection(BaseDatabaseIntrospection):
     def get_table_list(self, cursor):
-        breakpoint()
-        pass
+        return cursor.get_table_list()

@@ -2,6 +2,8 @@ from cosmos.client import CosmosDatabaseClient
 import azure.cosmos.cosmos_client as cosmos_client
 import azure.cosmos.errors as errors
 import azure.cosmos.http_constants as http_constants
+import azure.cosmos.exceptions as exceptions
+from azure.cosmos.partition_key import PartitionKey
 
 
 class CosmosWarning(Exception):
@@ -45,17 +47,26 @@ class CosmosNotSupportedError(CosmosDatabaseError):
 
 
 class CosmosDatabaseCursor:
-    def __init__(self, name, cosmos_client):
+    def __init__(self, name, container):
         self._name = name
-        self._cosmos_client = cosmos_client
+        self._container = container
 
     def close(self):
         pass  # no equivalent method
 
+    def get_table_list(self):
+        return []
+
+    def execute(self, operation, *parameters):
+        print(operation, *parameters)
+        self._container.query(operation)
+        pass
+
 
 class CosmosDatabaseConnection:
-    def __init__(self, cosmos_client):
-        self._cosmos_client = cosmos_client
+    def __init__(self, db_proxy, container_proxy):
+        self._db = db_proxy
+        self._container = container_proxy
 
     def close(self):
         pass  # no equivalent method
@@ -67,7 +78,7 @@ class CosmosDatabaseConnection:
         pass
 
     def cursor(self, name=None):
-        return CosmosDatabaseCursor(name, self._cosmos_client)
+        return CosmosDatabaseCursor(name, self._container)
 
 
 class CosmosDatabase:
@@ -89,6 +100,15 @@ class CosmosDatabase:
     def __init__(self, *args, **kwargs):
         pass
 
-    def connect(self, url, key, **kwargs):
-        client = cosmos_client.CosmosClient(url, {"masterKey": key})
-        return CosmosDatabaseConnection(client)
+    def connect(self, url, key, database, container, **kwargs):
+        client = cosmos_client.CosmosClient(url, key)
+        db_proxy = client.create_database_if_not_exists(database)
+        if "PARTITION_KEY" not in kwargs:
+            partition_key = "id"
+        else:
+            partition_key = kwargs["PARTITION_KEY"]
+        container_proxy = db_proxy.create_container_if_not_exists(
+            id=container,
+            partition_key=PartitionKey(path="/{0}".format(partition_key), kind="Hash"),
+        )
+        return CosmosDatabaseConnection(db_proxy, container_proxy)
