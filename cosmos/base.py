@@ -11,6 +11,23 @@ from django.db.backends.base.base import BaseDatabaseWrapper
 
 
 class DatabaseWrapper(BaseDatabaseWrapper):
+    operators = {
+        # Since '=' is used not only for string comparision there is no way
+        # to make it case (in)sensitive.
+        "exact": "= %s",
+        "iexact": "= UPPER(%s)",
+        "contains": "LIKE %s ESCAPE '\\'",
+        "icontains": "LIKE UPPER(%s) ESCAPE '\\'",
+        "gt": "> %s",
+        "gte": ">= %s",
+        "lt": "< %s",
+        "lte": "<= %s",
+        "startswith": "LIKE %s ESCAPE '\\'",
+        "endswith": "LIKE %s ESCAPE '\\'",
+        "istartswith": "LIKE UPPER(%s) ESCAPE '\\'",
+        "iendswith": "LIKE UPPER(%s) ESCAPE '\\'",
+    }
+
     vendor = "cosmos"
     display_name = "Azure Cosmos DB"
 
@@ -56,10 +73,9 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         url = conn_params.get("URL", None)
         key = conn_params.get("KEY", None)
         name = conn_params.get("NAME", "django")
-        container = conn_params.get("CONTAINER", "default")
         if not url or not key:
             raise KeyError("Missing URL or KEY in database configuration")
-        return self.Database().connect(url, key, name, container)
+        return self.Database().connect(url, key, name, **conn_params)
 
     def init_connection_state(self):
         """Initialize the database connection settings."""
@@ -78,3 +94,6 @@ class DatabaseWrapper(BaseDatabaseWrapper):
 
     def is_usable(self):
         return True
+
+    def _savepoint_allowed(self):
+        return False

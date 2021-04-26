@@ -3,4 +3,7 @@ from django.db.backends.base.introspection import BaseDatabaseIntrospection, Tab
 
 class CosmosDatabaseIntrospection(BaseDatabaseIntrospection):
     def get_table_list(self, cursor):
-        return cursor.get_table_list()
+        return [
+            TableInfo(name=table["id"], type="cosmos")
+            for table in cursor.get_table_list()
+        ]
